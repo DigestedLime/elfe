@@ -59,6 +59,8 @@ functorToString n terms = if n == "equal"
 
 
 data Context = Context [Statement] Context | Empty
+  deriving (Eq, Generic)
+
 instance Show Context where
   show (Context [] Empty) = ""
   show (Context [] p) = show p
@@ -79,7 +81,7 @@ data Position = Position (Int, Int) | None
 data ProverInfo = ProverName String String | NotProven
   deriving (Eq, Show, Generic)
 
-data ProofStatus = Correct ProverInfo | Incorrect ProverInfo | Unknown
+data ProofStatus = Correct ProverInfo | Incorrect ProverInfo | IncorrectWithExplanation ProverInfo ErrorExplanation | Unknown
   deriving (Eq, Show, Generic)
 
 data StatementStatus = StatementStatus { sid :: String
@@ -89,6 +91,132 @@ data StatementStatus = StatementStatus { sid :: String
                                        , opos :: Position
                                        }
   deriving (Eq, Show, Generic)
+
+-- Error explanation data types
+data ErrorExplanation = ErrorExplanation
+  { failedStep :: Int
+  , attemptedRule :: String
+  , targetFormula :: Formula
+  , requiredPremises :: [Formula]
+  , availablePremises :: [Formula]
+  , missingPremises :: [Formula]
+  , contextInfo :: Context
+  , errorType :: ErrorType
+  } deriving (Eq, Show, Generic)
+
+data ErrorType = MissingPremiseError [Formula]
+               | InvalidInferenceError String [Formula]
+               | QuantifierScopeError String Formula
+               | VariableCaptureError String Formula
+               | ATPTimeoutError
+               | ATPContradictionError [Formula]
+               | UnknownError
+  deriving (Eq, Show, Generic)
+
+data MissingPremise = MissingPremise
+  { premiseFormula :: Formula
+  , premiseSource :: String  -- e.g., "transitivity", "symmetry"
+  , premiseRole :: String    -- e.g., "first argument", "second argument"
+  } deriving (Eq, Show, Generic)
+
+data InferencePattern = TransitivityPattern String Term Term Term  -- rel x mid z
+                      | SymmetryPattern String Term Term           -- rel x z (need R(z,x))
+                      | ModusPonensPattern Formula Formula
+                      | UniversalIntroPattern String Formula
+                      | ExistentialIntroPattern String Formula
+                      | ReflexivityPattern Term
+                      | EqualitySubstitutionPattern Term Term
+                      | UnknownPattern Formula
+  deriving (Eq, Show, Generic)
+
+data ProofTrace = ProofTrace
+  { traceSteps :: [TraceStep]
+  , finalResult :: ProofStatus
+  } deriving (Eq, Show, Generic)
+
+data TraceStep = TraceStep
+  { stepNumber :: Int
+  , stepFormula :: Formula
+  , stepRule :: String
+  , stepPremises :: [Formula]
+  , stepSuccess :: Bool
+  , stepError :: Maybe ErrorExplanation
+  } deriving (Eq, Show, Generic)
+
+-- Helper functions for error explanations
+hasErrorExplanation :: ProofStatus -> Bool
+hasErrorExplanation (IncorrectWithExplanation _ _) = True
+hasErrorExplanation _ = False
+
+getErrorExplanation :: ProofStatus -> Maybe ErrorExplanation
+getErrorExplanation (IncorrectWithExplanation _ expl) = Just expl
+getErrorExplanation _ = Nothing
+
+-- Create basic error explanation
+createMissingPremiseError :: Int -> String -> Formula -> [Formula] -> [Formula] -> Context -> ErrorExplanation
+createMissingPremiseError step rule target required available context =
+  ErrorExplanation
+    { failedStep = step
+    , attemptedRule = rule
+    , targetFormula = target
+    , requiredPremises = required
+    , availablePremises = available
+    , missingPremises = required \\ available
+    , contextInfo = context
+    , errorType = MissingPremiseError (required \\ available)
+    }
+
+-- Create trace step from attempt
+createTraceStep :: Int -> Formula -> String -> [Formula] -> Bool -> Maybe ErrorExplanation -> TraceStep
+createTraceStep num formula rule premises success error =
+  TraceStep
+    { stepNumber = num
+    , stepFormula = formula
+    , stepRule = rule
+    , stepPremises = premises
+    , stepSuccess = success
+    , stepError = error
+    }
+
+-- Format error explanation for human-readable output
+formatErrorExplanation :: ErrorExplanation -> String
+formatErrorExplanation explanation = 
+  let stepNum = failedStep explanation
+      rule = attemptedRule explanation
+      target = targetFormula explanation
+      missing = missingPremises explanation
+      available = availablePremises explanation
+      errType = errorType explanation
+  in case errType of
+       MissingPremiseError missingPremises -> 
+         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "But " ++ rule ++ " requires:\n" ++
+         formatPremises (requiredPremises explanation) ++ "\n" ++
+         "Available in context:\n" ++
+         formatPremises available ++ "\n" ++
+         "Missing:\n" ++
+         formatPremises missingPremises ++ "\n" ++
+         "Error Type: Missing Premise"
+       ATPTimeoutError -> 
+         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "ATP timed out while trying to verify this step.\n" ++
+         "This could be due to:\n" ++
+         "- Missing premises that weren't detected\n" ++
+         "- Complex proof that requires more time\n" ++
+         "- ATP limitations\n" ++
+         "Available premises: " ++ show (length available) ++ " formulas\n" ++
+         "Error Type: ATP Timeout"
+       UnknownError -> 
+         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "An unknown error occurred during proof verification.\n" ++
+         "Error Type: Unknown Error"
+
+-- Helper to format premises nicely
+formatPremises :: [Formula] -> String
+formatPremises [] = "  (none)"
+formatPremises premises = 
+  unlines $ map (\p -> "  " ++ show p) (take 5 premises) ++ 
+  (if length premises > 5 then ["  ... (" ++ show (length premises - 5) ++ " more)"] else [])
 
 filterSs :: [StatementStatus] -> ProofStatus -> [StatementStatus]
 filterSs [] _ = []
@@ -227,11 +355,12 @@ data Statement = Statement { id :: String
                            , proof :: Proof
                            , pos :: Position
                            }
-
-data Proof = Assumed | ByContext | BySubcontext [String] | BySequence [Statement] | BySplit [Statement]
-
+  deriving (Eq, Generic)
 
 instance Show Statement where show = prettyStatement 0
+
+data Proof = Assumed | ByContext | BySubcontext [String] | BySequence [Statement] | BySplit [Statement]
+  deriving (Eq, Show, Generic)
 prettyStatement l (Statement id formula proof _) = (concat $ map (\_ -> "|  ") (replicate l ' ')) ++ id ++ ": " ++ show formula ++ " -- " ++ (prettyProof l proof)
 
 prettyProof l Assumed = "Assumed\n"
