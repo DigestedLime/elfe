@@ -95,10 +95,14 @@ data ProofAnalysis = ProofAnalysis
   , missingFormulas :: [Formula]
   } deriving (Show, Eq)
 
+-- Formula Eq is defined as always-True, so structural checks must use show.
+formulaElem :: Formula -> [Formula] -> Bool
+formulaElem f = any (\g -> show f == show g)
+
 -- Extract formulas from context for analysis
 extractFormulasFromContext :: Context -> [Formula]
 extractFormulasFromContext Empty = []
-extractFormulasFromContext (Context statements parent) = 
+extractFormulasFromContext (Context statements parent) =
     map formula statements ++ extractFormulasFromContext parent
 
 -- Match the formula against known inference patterns.
@@ -115,7 +119,7 @@ matchInferencePattern target available =
             case findTransitivityMiddle rel (Var x) (Var z) available of
                 Just mid -> Just (TransitivityPattern rel (Var x) mid (Var z))
                 Nothing  ->
-                    if Atom rel [Var z, Var x] `elem` available
+                    if formulaElem (Atom rel [Var z, Var x]) available
                     then Just (SymmetryPattern rel (Var x) (Var z))
                     else Nothing
         _ -> Nothing
@@ -141,9 +145,11 @@ getRequiredPremises (Just pat) = case pat of
     ReflexivityPattern _          -> []
     _                             -> []
 
--- Find which required premises are missing from available context
+-- Find which required premises are missing from available context.
+-- Uses show-based comparison because Formula Eq is always True.
 findMissingPremises :: [Formula] -> [Formula] -> [Formula]
-findMissingPremises required available = filter (`notElem` available) required
+findMissingPremises required available =
+    filter (\f -> not (formulaElem f available)) required
 
 -- Generate error explanation based on analysis
 generateErrorExplanation :: String -> Formula -> Context -> ProofAnalysis -> ErrorExplanation

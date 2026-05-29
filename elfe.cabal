@@ -19,6 +19,17 @@ library
       Settings
   hs-source-dirs:
       src, .
+  extensions:          DeriveGeneric
+  build-depends:       base
+                     , text
+                     , bytestring
+                     , transformers
+                     , mtl
+                     , parsec
+                     , process
+                     , directory
+                     , random
+                     , aeson
 
 executable elfe
   main-is:             Main.hs
@@ -34,6 +45,7 @@ executable elfe
   extensions:          OverloadedStrings
                      , DeriveGeneric
                      , DeriveDataTypeable
+                     , ScopedTypeVariables
   build-depends:       base
                      , wai
                      , warp
@@ -72,6 +84,7 @@ executable elfe-server
   extensions:          OverloadedStrings
                      , DeriveGeneric
                      , DeriveDataTypeable
+                     , ScopedTypeVariables
   build-depends:       base
                      , wai
                      , warp
@@ -97,3 +110,30 @@ executable elfe-server
                      , hastache
                      , random
                      , criterion-measurement
+
+test-suite elfe-tests
+  type:              exitcode-stdio-1.0
+  main-is:           Test.hs
+  hs-source-dirs:    tests, src, .
+  other-modules:
+      Elfe
+      Elfe.Language
+      Elfe.Preprocessor
+      Elfe.Parser
+      Elfe.Verifier
+      Elfe.Prover
+      Settings
+  extensions:        OverloadedStrings
+                   , DeriveGeneric
+                   , DeriveDataTypeable
+                   , ScopedTypeVariables
+  build-depends:     base
+                   , text
+                   , bytestring
+                   , transformers
+                   , mtl
+                   , parsec
+                   , process
+                   , directory
+                   , random
+                   , aeson

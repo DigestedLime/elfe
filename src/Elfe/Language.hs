@@ -197,7 +197,7 @@ formatErrorExplanation explanation =
          "Missing:\n" ++
          formatPremises missingPremises ++ "\n" ++
          "Error Type: Missing Premise"
-       ATPTimeoutError -> 
+       ATPTimeoutError ->
          "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
          "ATP timed out while trying to verify this step.\n" ++
          "This could be due to:\n" ++
@@ -206,7 +206,29 @@ formatErrorExplanation explanation =
          "- ATP limitations\n" ++
          "Available premises: " ++ show (length available) ++ " formulas\n" ++
          "Error Type: ATP Timeout"
-       UnknownError -> 
+       ATPContradictionError contradictions ->
+         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "The ATP found a contradiction in the assumptions.\n" ++
+         "Contradicting formulas:\n" ++
+         formatPremises contradictions ++ "\n" ++
+         "Error Type: ATP Contradiction"
+       InvalidInferenceError inferenceRule badPremises ->
+         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "The inference rule '" ++ inferenceRule ++ "' cannot be applied here.\n" ++
+         "Problematic premises:\n" ++
+         formatPremises badPremises ++ "\n" ++
+         "Error Type: Invalid Inference"
+       QuantifierScopeError varName boundFormula ->
+         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "Quantifier scope error: variable '" ++ varName ++ "' is out of scope.\n" ++
+         "In formula: " ++ show boundFormula ++ "\n" ++
+         "Error Type: Quantifier Scope Error"
+       VariableCaptureError varName captureFormula ->
+         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "Variable capture: '" ++ varName ++ "' would be captured.\n" ++
+         "In formula: " ++ show captureFormula ++ "\n" ++
+         "Error Type: Variable Capture Error"
+       UnknownError ->
          "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
          "An unknown error occurred during proof verification.\n" ++
          "Error Type: Unknown Error"
