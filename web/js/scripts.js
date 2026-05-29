@@ -63,19 +63,34 @@ window.onload = function () {
                     var col = obj.opos.contents[1];
                     if (row == this.row) {
                         console.log(obj);
-                        this.output += "Raw: " + obj.sformula;
+                        this.output += "Formula: " + obj.sformula;
                         if (obj.status.tag == "Correct") {
                             try {
-                                this.output += "\n\nProved by " + obj.status.contents.contents[0]
+                                this.output += "\n\nProved by " + obj.status.contents.contents[0];
                             } catch(e) {}
-                        }
-                        else if (obj.status.tag == "Incorrect") {
+                        } else if (obj.status.tag == "Incorrect") {
                             this.output += "\nDisproved";
                             try {
-                            this.output += " by " + obj.status.contents.contents[0]
-                                            + ".\nCountermodel: \n"
-                                            + obj.status.contents.contents[1];
-                                        } catch (e) {}
+                                this.output += " by " + obj.status.contents.contents[0]
+                                                + ".\nCountermodel: \n"
+                                                + obj.status.contents.contents[1];
+                            } catch (e) {}
+                        } else if (obj.status.tag == "IncorrectWithExplanation") {
+                            this.output += "\n\nProof failed";
+                            try {
+                                var expl = obj.status.contents[1];
+                                this.output += "\n\nAttempted: " + expl.attemptedRule;
+                                if (expl.missingPremises && expl.missingPremises.length > 0) {
+                                    this.output += "\nMissing premises:";
+                                    expl.missingPremises.forEach(function(p) {
+                                        this.output += "\n  " + p;
+                                    }, this);
+                                }
+                                if (expl.availablePremises && expl.availablePremises.length > 0) {
+                                    this.output += "\nAvailable in context: " + expl.availablePremises.length + " formula(s)";
+                                }
+                                this.output += "\nError type: " + expl.errorType;
+                            } catch(e) {}
                         }
                         this.output += "\n\n";
                     }
@@ -87,10 +102,8 @@ window.onload = function () {
             updateLines: function(obj){
                 if (obj.opos.tag != "None") {
                     var row = obj.opos.contents[0];
-                    var col = obj.opos.contents[1];
-                    if (obj.status.tag == "Correct") {
-                    }
-                    else if (obj.status.tag == "Incorrect" || obj.status.tag == "Unknown") {
+                    if (obj.status.tag == "Incorrect" || obj.status.tag == "Unknown"
+                            || obj.status.tag == "IncorrectWithExplanation") {
                         this.errorLines.push(row);
                     }
                 }
