@@ -15,8 +15,6 @@ import Text.Parsec.Pos (SourcePos)
 import qualified Text.ParserCombinators.Parsec.Token as Token
 import Data.Functor.Identity (Identity)
 
-import Debug.Trace
-
 import Elfe.Language
 
 languageDef =
@@ -51,7 +49,7 @@ seeNext :: Int -> ParsecT String u Identity ()
 seeNext n = do
   s <- getParserState
   let out = take n (stateInput s)
-  traceShowM out
+  return ()
 
 getPos = do
   pos <- getPosition
@@ -326,7 +324,7 @@ unfold (Impl l r) bvs =
      reserved "Assume"
      l' <- fof
      if l /= (bindVars l' bvs)
-       then trace ("Assume did not work out, expected " ++ show l ++ ", got " ++ show l') fail "narp"
+       then fail "narp"
        else do
          reserved "."
          lId <- newId
@@ -359,7 +357,7 @@ enfold oldGoal bvs =
      oldId <- newId
      soundnessId <- newId
      newId <- newId
-     trace ("Found enfold " ++ show newGoal ++ " | " ++ (show $ newVars)) return [Statement oldId (bindVars oldGoal bvs)  
+     return [Statement oldId (bindVars oldGoal bvs)
           (BySplit [
               (Statement soundnessId (bindVars (universallyQuantify newVars newGoal `Impl` oldGoal) bvs) ByContext pos),
               (Statement newId (bindVars newGoal (bvs++(vars2Strings newVars))) (BySequence derivation) None)

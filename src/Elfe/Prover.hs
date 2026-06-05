@@ -12,8 +12,6 @@ import Control.Concurrent
 import Control.Concurrent.Chan
 import Control.Monad
 
-import Debug.Trace
-
 import Elfe.Language
 import Settings (provers, countermodler, atpTimeout)
 
@@ -54,7 +52,7 @@ runProver chan task (Prover name command args provedMsg disprovedMsg unknownMsg)
 
     hClose eh ; waitForProcess ph
 
-    when (pos) (trace ("PROVED by " ++ name) writeChan chan (Correct (ProverName name "")) >> putMVar done True)
+    when pos (writeChan chan (Correct (ProverName name "")) >> putMVar done True)
     --when (neg) (("DISPROVED by " ++ name ++ "\n" ++ task) (return ())) -- writeChan chan (Incorrect (ProverName name "")) >> putMVar done True
     --when (not pos && not neg) (("UNKNOWN by " ++ name ++ "\n") (return ()))
 
@@ -71,7 +69,6 @@ runCountermodler chan task (Countermodler name command args clauseMarker) done t
       Nothing -> return ()
       Just start -> do 
         let contermodel = retrieveClauses $ drop (start+1) $ lines ofl
-        traceM $ show $ contermodel
         writeChan chan (Incorrect (ProverName name contermodel)) >> putMVar done True
 
 
@@ -88,5 +85,5 @@ retrieveClauses (s:rs) = if s == ""
 timeout :: String -> Chan ProofStatus -> MVar Bool -> IO ()
 timeout task chan done = do
   threadDelay $ atpTimeout*1000000
-  trace ("TIMEOUT\n" ++ task) writeChan chan Unknown >> putMVar done True
+  writeChan chan Unknown >> putMVar done True
   
