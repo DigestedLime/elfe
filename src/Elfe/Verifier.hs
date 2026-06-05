@@ -310,7 +310,7 @@ foldStatus :: [StatementStatus] -> ProofStatus
 foldStatus [] = Correct NotProven
 foldStatus ((StatementStatus _ _ s _ _):sts)
     | isCorrect s = foldStatus sts
-    | otherwise   = Incorrect NotProven
+    | otherwise   = s
 
 isCorrect :: ProofStatus -> Bool
 isCorrect (Correct _) = True
