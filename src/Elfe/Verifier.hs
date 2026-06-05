@@ -274,6 +274,42 @@ parseStepId sid = case reads (drop (length idPrefix) sid) of
     _         -> 0
 
 -- ---------------------------------------------------------------------------
+-- ProofTrace construction
+-- ---------------------------------------------------------------------------
+
+-- | Build a flat ProofTrace from the status tree produced by verSeq.
+buildTrace :: [StatementStatus] -> ProofTrace
+buildTrace statuses = ProofTrace
+    { traceSteps  = zipWith statementToStep [1..] (flattenStatuses statuses)
+    , finalResult = foldStatus statuses
+    }
+
+-- | Depth-first flattening: parent before children.
+flattenStatuses :: [StatementStatus] -> [StatementStatus]
+flattenStatuses = concatMap (\ss -> ss : flattenStatuses (children ss))
+
+statementToStep :: Int -> StatementStatus -> TraceStep
+statementToStep n (StatementStatus _ f st cs _) = TraceStep
+    { stepNumber  = n
+    , stepFormula = f
+    , stepRule    = ruleFromStatus st
+    , stepPremises = case st of
+                         IncorrectWithExplanation _ expl -> availablePremises expl
+                         _                               -> []
+    , stepSuccess  = isCorrect st
+    , stepError    = case st of
+                         IncorrectWithExplanation _ expl -> Just expl
+                         _                               -> Nothing
+    }
+
+ruleFromStatus :: ProofStatus -> String
+ruleFromStatus (Correct (ProverName name _))     = name
+ruleFromStatus (Correct NotProven)               = "assumed"
+ruleFromStatus (IncorrectWithExplanation _ expl) = attemptedRule expl
+ruleFromStatus (Incorrect _)                     = "failed"
+ruleFromStatus Unknown                           = "unknown"
+
+-- ---------------------------------------------------------------------------
 -- Status helpers
 -- ---------------------------------------------------------------------------
 

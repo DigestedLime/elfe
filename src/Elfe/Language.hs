@@ -233,6 +233,37 @@ formatErrorExplanation explanation =
          "An unknown error occurred during proof verification.\n" ++
          "Error Type: Unknown Error"
 
+-- Format a full proof trace for --trace output
+formatTrace :: ProofTrace -> String
+formatTrace (ProofTrace steps final) =
+    unlines $ ["--- Proof Trace ---"] ++ map formatStep steps ++ [finalLine]
+  where
+    finalLine = "Final result: " ++ case final of
+        Correct _  -> "Correct"
+        _          -> "Incorrect"
+
+formatStep :: TraceStep -> String
+formatStep step =
+    let mark    = if stepSuccess step then "[PASS]" else "[FAIL]"
+        numStr  = let s = show (stepNumber step)
+                  in replicate (3 - length s) ' ' ++ s
+        body    = mark ++ " Step " ++ numStr ++ ": " ++ show (stepFormula step)
+                  ++ "  [" ++ stepRule step ++ "]"
+        detail  = case stepError step of
+                      Nothing   -> ""
+                      Just expl -> "\n       " ++ formatBrief expl
+    in body ++ detail
+
+-- One-line error summary for trace output
+formatBrief :: ErrorExplanation -> String
+formatBrief expl = case errorType expl of
+    MissingPremiseError fs ->
+        "Missing: " ++ unwords (map show (take 3 fs))
+        ++ if length fs > 3 then " ..." else ""
+    ATPTimeoutError        -> "ATP timed out"
+    UnknownError           -> "Unknown failure"
+    _                      -> show (errorType expl)
+
 -- Helper to format premises nicely
 formatPremises :: [Formula] -> String
 formatPremises [] = "  (none)"

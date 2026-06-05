@@ -7,30 +7,36 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    []    -> do raw <- getContents
-                check raw
-    [arg] -> do raw <- readFile arg
-                check raw 
-    _ -> error "too many arguments - just give the file"
+    []               -> check False =<< getContents
+    ["--trace"]      -> check True  =<< getContents
+    [arg]            -> check False =<< readFile arg
+    ["--trace", f]   -> check True  =<< readFile f
+    [f, "--trace"]   -> check True  =<< readFile f
+    _                -> error "usage: elfe [--trace] [file]"
 
-check :: String -> IO ()
-check raw = do
+check :: Bool -> String -> IO ()
+check traceMode raw = do
     putStrLn "\n--------------------------PARSING--------------------------"
     startParsing <- getTime
     let included = includeLibraries raw
     sequ <- parseString included
     endParsing <- getTime
     putStrLn $ concat $ map (prettyStatement 0) sequ
-    putStrLn "-------------------------VERIFYING--------------------------" 
+    putStrLn "-------------------------VERIFYING--------------------------"
     startVerifying <- getTime
     res <- verify sequ
     endVerifying <- getTime
-    putStrLn "---------------------------RESULT--------------------------" 
+    putStrLn "---------------------------RESULT--------------------------"
     printRes res
-    putStrLn "-------------------------STATISTICS------------------------" 
-    putStrLn $ "Parsing time: " ++ (secs $ endParsing - startParsing)
-    putStrLn $ "Verifying time: " ++ (secs $ endVerifying - startVerifying)
-    putStrLn $ "Total: " ++ (secs $ endParsing - startParsing + endVerifying - startVerifying)
+    if traceMode
+        then do
+            putStrLn "--------------------------TRACE----------------------------"
+            putStr $ formatTrace (buildTrace res)
+        else return ()
+    putStrLn "-------------------------STATISTICS------------------------"
+    putStrLn $ "Parsing time: "   ++ secs (endParsing   - startParsing)
+    putStrLn $ "Verifying time: " ++ secs (endVerifying - startVerifying)
+    putStrLn $ "Total: "          ++ secs (endParsing   - startParsing + endVerifying - startVerifying)
 
 
 printRes :: [StatementStatus] -> IO ()
