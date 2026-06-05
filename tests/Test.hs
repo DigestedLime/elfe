@@ -52,31 +52,42 @@ dummyExpl et = ErrorExplanation
     , errorType         = et
     }
 
+mkStmt :: String -> Formula -> Statement
+mkStmt name f = Statement name f Assumed None
+
+ctxFrom :: [Formula] -> Context
+ctxFrom fs = Context (zipWith mkStmt (map show [1::Int ..]) fs) Empty
+
+mkAnalysis :: Formula -> [Formula] -> [Formula] -> [Formula] -> ProofAnalysis
+mkAnalysis target available required missing = ProofAnalysis
+    { analysisTarget    = target
+    , availableFormulas = available
+    , inferencePattern  = Nothing
+    , requiredFormulas  = required
+    , missingFormulas   = missing
+    , intendedRule      = Nothing
+    }
+
 -- ---------------------------------------------------------------------------
 -- Tests
 -- ---------------------------------------------------------------------------
 
 testPatternMatching :: IO ()
 testPatternMatching = do
-    -- Reflexivity guard must fire before the general two-variable branch
     check "reflexivity detected for R(x,x)" $
         matchInferencePattern rxx [] == Just (ReflexivityPattern (Var "x"))
 
-    -- Transitivity: middle term found in context
     check "transitivity with middle y present" $
         matchInferencePattern rxz [rxy, ryz]
             == Just (TransitivityPattern "R" (Var "x") (Var "y") (Var "z"))
 
-    -- Transitivity: no match when context has only the left half
     check "no transitivity when only R(x,y) in context" $
         matchInferencePattern rxz [rxy] == Nothing
 
-    -- Symmetry: reverse form present in context
     check "symmetry detected when R(z,x) in context" $
         matchInferencePattern rxz [rzx]
             == Just (SymmetryPattern "R" (Var "x") (Var "z"))
 
-    -- Non-relational formula matches nothing
     check "Top has no inference pattern" $
         matchInferencePattern Top [] == Nothing
 
@@ -86,19 +97,15 @@ testPremiseTracking = do
     let symPat   = Just (SymmetryPattern     "R" (Var "x") (Var "z"))
     let refPat   = Just (ReflexivityPattern (Var "x"))
 
-    -- The relation name must appear in the required premises (was "temp" before fix)
     check "transitivity required premises carry relation name" $
         map show (getRequiredPremises transPat) == [show rxy, show ryz]
 
-    -- Symmetry requires the reversed form
     check "symmetry required premise is R(z,x)" $
         map show (getRequiredPremises symPat) == [show rzx]
 
-    -- Reflexivity needs no additional premises
     check "reflexivity has no required premises" $
         null (getRequiredPremises refPat)
 
-    -- Nothing yields empty list
     check "no pattern yields empty required premises" $
         null (getRequiredPremises Nothing)
 
@@ -117,7 +124,6 @@ testTransitivityMiddle = do
     check "Nothing on empty context" $
         findTransitivityMiddle "R" (Var "x") (Var "z") [] == Nothing
 
-    -- Should not match on a different relation name
     check "Nothing when relation name differs" $
         findTransitivityMiddle "R" (Var "x") (Var "z")
             [Atom "S" [Var "x", Var "y"], Atom "S" [Var "y", Var "z"]]
@@ -125,7 +131,6 @@ testTransitivityMiddle = do
 
 testFormatCoverage :: IO ()
 testFormatCoverage = do
-    -- Every ErrorType constructor must produce non-empty output
     check "MissingPremiseError formats non-empty" $
         not (null (formatErrorExplanation (dummyExpl (MissingPremiseError []))))
 
@@ -147,39 +152,23 @@ testFormatCoverage = do
     check "UnknownError formats non-empty" $
         not (null (formatErrorExplanation (dummyExpl UnknownError)))
 
-    -- MissingPremiseError should mention the attempted rule
     let explMissing = (dummyExpl (MissingPremiseError [])) { attemptedRule = "transitivity" }
     check "MissingPremiseError output contains rule name" $
         "transitivity" `isInfixOf` formatErrorExplanation explMissing
 
-    -- ATPTimeoutError should mention timeout (case-insensitive)
     check "ATPTimeoutError output mentions timeout" $
         "timeout" `isInfixOf` map toLower (formatErrorExplanation (dummyExpl ATPTimeoutError))
 
-    -- QuantifierScopeError should mention the variable name
     let explQS = dummyExpl (QuantifierScopeError "myVar" Top)
     check "QuantifierScopeError output contains variable name" $
         "myVar" `isInfixOf` formatErrorExplanation explQS
 
 -- ---------------------------------------------------------------------------
--- analyzeProofAttempt integration tests
---
--- These test the full pipeline from a Formula + Context to ProofAnalysis.
--- NOTE: missingFormulas is always [] in normal flow because matchInferencePattern
--- only identifies transitivity when BOTH halves are already in context, so
--- findMissingPremises finds nothing absent. Tests below document that invariant
--- explicitly and verify the intermediate results are correct anyway.
+-- analyzeProofAttempt integration
 -- ---------------------------------------------------------------------------
-
-mkStmt :: String -> Formula -> Statement
-mkStmt name f = Statement name f Assumed None
-
-ctxFrom :: [Formula] -> Context
-ctxFrom fs = Context (zipWith mkStmt (map show [1::Int ..]) fs) Empty
 
 testAnalyzeProofAttempt :: IO ()
 testAnalyzeProofAttempt = do
-    -- Both halves present → transitivity matched, nothing missing
     let analysis1 = analyzeProofAttempt rxz (ctxFrom [rxy, ryz])
     check "transitivity pattern matched when both halves in context" $
         inferencePattern analysis1 == Just (TransitivityPattern "R" (Var "x") (Var "y") (Var "z"))
@@ -187,22 +176,21 @@ testAnalyzeProofAttempt = do
         null (missingFormulas analysis1)
     check "both halves appear in requiredFormulas" $
         map show (requiredFormulas analysis1) == [show rxy, show ryz]
+    check "intendedRule is Nothing for analyzeProofAttempt" $
+        intendedRule analysis1 == Nothing
 
-    -- Only left half present → no pattern (middle not found), nothing missing
     let analysis2 = analyzeProofAttempt rxz (ctxFrom [rxy])
     check "no pattern when only R(x,y) in context" $
         inferencePattern analysis2 == Nothing
     check "missingFormulas empty when pattern not found" $
         null (missingFormulas analysis2)
 
-    -- Reversed form present → symmetry matched
     let analysis3 = analyzeProofAttempt rxz (ctxFrom [rzx])
     check "symmetry matched when R(z,x) in context" $
         inferencePattern analysis3 == Just (SymmetryPattern "R" (Var "x") (Var "z"))
     check "required premise for symmetry is R(z,x)" $
         map show (requiredFormulas analysis3) == [show rzx]
 
-    -- Empty context → nothing matched
     let analysis4 = analyzeProofAttempt rxz (ctxFrom [])
     check "no pattern on empty context" $
         inferencePattern analysis4 == Nothing
@@ -210,26 +198,68 @@ testAnalyzeProofAttempt = do
         null (availableFormulas analysis4)
 
 -- ---------------------------------------------------------------------------
--- generateErrorExplanation tests
---
--- generateErrorExplanation reads from a ProofAnalysis. We construct one
--- directly with non-empty missingFormulas to reach the MissingPremiseError
--- branch, which is unreachable via normal analyzeProofAttempt flow (see
--- comment above).
+-- analyzeByRules — the core fix: uses rule names to find missing premises
+-- even when the middle term is absent from context.
 -- ---------------------------------------------------------------------------
 
-mkAnalysis :: Formula -> [Formula] -> [Formula] -> [Formula] -> ProofAnalysis
-mkAnalysis target available required missing = ProofAnalysis
-    { analysisTarget    = target
-    , availableFormulas = available
-    , inferencePattern  = Nothing
-    , requiredFormulas  = required
-    , missingFormulas   = missing
-    }
+testAnalyzeByRules :: IO ()
+testAnalyzeByRules = do
+    -- Transitivity with only left half: R(y,z) should be identified as missing
+    let a1 = analyzeByRules ["transitivity"] rxz (ctxFrom [rxy])
+    check "transitivity rule sets intendedRule" $
+        intendedRule a1 == Just "transitivity"
+    check "transitivity pattern set even with only left half" $
+        case inferencePattern a1 of
+            Just (TransitivityPattern _ _ _ _) -> True
+            _                                  -> False
+    check "R(y,z) identified as missing when only R(x,y) present" $
+        any (\f -> show f == show ryz) (missingFormulas a1)
+
+    -- Transitivity with only right half: R(x,y) should be missing
+    let a2 = analyzeByRules ["transitivity"] rxz (ctxFrom [ryz])
+    check "R(x,y) identified as missing when only R(y,z) present" $
+        any (\f -> show f == show rxy) (missingFormulas a2)
+
+    -- Transitivity with both halves: nothing missing
+    let a3 = analyzeByRules ["transitivity"] rxz (ctxFrom [rxy, ryz])
+    check "nothing missing when both transitivity halves present" $
+        null (missingFormulas a3)
+
+    -- Transitivity with empty context: uses placeholder pivot Var "y"
+    let a4 = analyzeByRules ["transitivity"] rxz (ctxFrom [])
+    check "both R(x,y) and R(y,z) missing when context empty" $
+        length (missingFormulas a4) == 2
+
+    -- Symmetry with no reversed form: R(z,x) should be missing
+    let a5 = analyzeByRules ["symmetry"] rxz (ctxFrom [])
+    check "symmetry rule sets intendedRule" $
+        intendedRule a5 == Just "symmetry"
+    check "R(z,x) identified as missing for symmetry" $
+        any (\f -> show f == show rzx) (missingFormulas a5)
+
+    -- Symmetry with reversed form present: nothing missing
+    let a6 = analyzeByRules ["symmetry"] rxz (ctxFrom [rzx])
+    check "nothing missing for symmetry when R(z,x) present" $
+        null (missingFormulas a6)
+
+    -- Unknown rule: falls back to analyzeProofAttempt behaviour
+    let a7 = analyzeByRules ["unknownRule"] rxz (ctxFrom [])
+    check "unknown rule still sets intendedRule" $
+        intendedRule a7 == Just "unknownRule"
+    check "unknown rule with empty context finds no pattern" $
+        inferencePattern a7 == Nothing
+
+    -- Empty rule list: same as analyzeProofAttempt
+    let a8 = analyzeByRules [] rxz (ctxFrom [rxy, ryz])
+    check "empty rule list falls back to pattern inference" $
+        inferencePattern a8 == Just (TransitivityPattern "R" (Var "x") (Var "y") (Var "z"))
+
+-- ---------------------------------------------------------------------------
+-- generateErrorExplanation
+-- ---------------------------------------------------------------------------
 
 testGenerateExplanation :: IO ()
 testGenerateExplanation = do
-    -- Non-empty missingFormulas → MissingPremiseError
     let analysis = mkAnalysis rxz [rxy] [rxy, ryz] [ryz]
     let expl = generateErrorExplanation "s5" rxz emptyCtx analysis
     check "failedStep parsed from id" $
@@ -241,7 +271,6 @@ testGenerateExplanation = do
             MissingPremiseError _ -> True
             _                     -> False
 
-    -- Empty missingFormulas → UnknownError
     let analysis2 = mkAnalysis rxz [rxy, ryz] [rxy, ryz] []
     let expl2 = generateErrorExplanation "s3" rxz emptyCtx analysis2
     check "UnknownError produced when nothing is missing" $
@@ -249,17 +278,19 @@ testGenerateExplanation = do
             UnknownError -> True
             _            -> False
 
+    -- intendedRule is used as attemptedRule when present
+    let analysisWithRule = (mkAnalysis rxz [rxy] [rxy, ryz] [ryz])
+                               { intendedRule = Just "transitivity" }
+    let explWithRule = generateErrorExplanation "s7" rxz emptyCtx analysisWithRule
+    check "intendedRule used as attemptedRule in explanation" $
+        attemptedRule explWithRule == "transitivity"
+
 -- ---------------------------------------------------------------------------
--- formatErrorExplanation content tests for MissingPremiseError
---
--- These verify that the formatted message actually names the missing formula.
--- Tests using dummyExpl (empty premise lists) already ran above; these use
--- real formula content.
+-- formatErrorExplanation with real missing premises
 -- ---------------------------------------------------------------------------
 
 testFormatMissingPremises :: IO ()
 testFormatMissingPremises = do
-    -- Single missing premise should appear in the output
     let expl = ErrorExplanation
           { failedStep        = 4
           , attemptedRule     = "transitivity"
@@ -280,7 +311,6 @@ testFormatMissingPremises = do
     check "Missing section present" $
         "Missing" `isInfixOf` out
 
-    -- Multiple missing premises: all should appear
     let expl2 = expl
           { missingPremises = [rxy, ryz]
           , errorType       = MissingPremiseError [rxy, ryz]
@@ -308,6 +338,8 @@ main = do
     testFormatCoverage
     putStrLn "\n-- analyzeProofAttempt Integration --"
     testAnalyzeProofAttempt
+    putStrLn "\n-- analyzeByRules (rule-aware analysis) --"
+    testAnalyzeByRules
     putStrLn "\n-- generateErrorExplanation --"
     testGenerateExplanation
     putStrLn "\n-- formatErrorExplanation with real missing premises --"
