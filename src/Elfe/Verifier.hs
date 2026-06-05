@@ -279,7 +279,10 @@ buildTrace statuses = ProofTrace
 
 -- | Depth-first flattening: parent before children.
 flattenStatuses :: [StatementStatus] -> [StatementStatus]
-flattenStatuses = concatMap (\ss -> ss : flattenStatuses (children ss))
+flattenStatuses = go []
+  where
+    go acc []     = reverse acc
+    go acc (s:ss) = go (s : acc) (children s ++ ss)
 
 statementToStep :: Int -> StatementStatus -> TraceStep
 statementToStep n (StatementStatus _ f st cs _) = TraceStep
