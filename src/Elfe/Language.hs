@@ -271,7 +271,7 @@ formatBrief :: ErrorExplanation -> String
 formatBrief expl = case errorType expl of
     MissingPremiseError fs ->
         "Missing: " ++ unwords (map show (take 3 fs))
-        ++ if length fs > 3 then " ..." else ""
+        ++ if null (drop 3 fs) then "" else " ..."
     ATPTimeoutError        -> "ATP timed out"
     UnknownError           -> "Unknown failure"
     _                      -> show (errorType expl)
