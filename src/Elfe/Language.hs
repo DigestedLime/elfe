@@ -1,7 +1,6 @@
 module Elfe.Language where
 
 import Data.List
-import Debug.Trace
 import GHC.Generics (Generic)
 
 data Term = Cons String [Term]

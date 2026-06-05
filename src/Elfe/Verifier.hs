@@ -4,8 +4,6 @@ import Control.Applicative
 import Control.Exception
 import Control.Monad
 
-import Debug.Trace
-
 import Elfe.Language
 import Elfe.Prover
 
@@ -27,26 +25,19 @@ verifySplit (c:cs) context = do
   return $ status : remaining
 
 verStat :: Statement -> Context -> IO StatementStatus
-verStat (Statement id f Assumed pos) context = do
-    traceM ("Assume " ++ id ++ ": " ++ show f)
+verStat (Statement id f Assumed pos) _context =
     return $ StatementStatus id f (Correct NotProven) [] pos
 verStat (Statement id f ByContext pos) context = do
-    traceM ("Prove  " ++ id ++ ": " ++ show f)
     status <- checkStat (Statement id f ByContext pos) context Nothing
     return $ StatementStatus id f status [] pos
 verStat (Statement id f (BySubcontext ids) pos) context = do
-    traceM ("Prove  " ++ id ++ ": " ++ show f ++ " by " ++ unwords ids)
-    -- Analyse against the full context so we can report what's missing.
-    -- The ATP still runs with the restricted context.
     let analysis = analyzeByRules ids f context
     status <- checkStat (Statement id f ByContext pos) (restrictContext context ids) (Just analysis)
     return $ StatementStatus id f status [] pos
 verStat (Statement id f (BySequence sequ) pos) context = do
-    traceM ("Check  " ++ id ++ ": " ++ show f)
     sequStatus <- verSeq sequ (Context [] context)
     return $ StatementStatus id f (foldStatus sequStatus) sequStatus pos
 verStat (Statement id f (BySplit split) pos) context = do
-    traceM ("Split  " ++ id ++ ": " ++ show f)
     splitStatus <- verifySplit split context
     return $ StatementStatus id f (foldStatus splitStatus) splitStatus pos
 
@@ -54,26 +45,19 @@ verStat (Statement id f (BySplit split) pos) context = do
 --   caller already knows the intended rule names before restricting context).
 --   When Nothing, the analysis is derived from the context as given.
 checkStat :: Statement -> Context -> Maybe ProofAnalysis -> IO ProofStatus
-checkStat (Statement id formula _ _) context maybeAnalysis = do
+checkStat (Statement sid formula _ _) context maybeAnalysis = do
     let analysis = case maybeAnalysis of
                        Just a  -> a
                        Nothing -> analyzeProofAttempt formula context
-    traceM ("Analyzing proof attempt for " ++ id ++ ": " ++ show formula)
-    result <- prove (show context ++ "fof(" ++ id ++ ", conjecture, (" ++ show formula ++ ")).\n")
+    result <- prove (show context ++ "fof(" ++ sid ++ ", conjecture, (" ++ show formula ++ ")).\n")
     case result of
-        Incorrect proverInfo -> do
-            traceM ("ATP failed for " ++ id ++ ", generating error explanation")
-            let expl = generateErrorExplanation id formula context analysis
-            traceM ("Error explanation:\n" ++ formatErrorExplanation expl)
-            return $ IncorrectWithExplanation proverInfo expl
-        Unknown -> do
-            traceM ("ATP timeout for " ++ id ++ ", generating error explanation")
-            let expl = generateTimeoutExplanation id formula context analysis
-            traceM ("Error explanation:\n" ++ formatErrorExplanation expl)
-            return $ IncorrectWithExplanation (ProverName "ATP" "timeout") expl
-        Correct _ -> do
-            traceM ("ATP succeeded for " ++ id)
-            return result
+        Incorrect proverInfo ->
+            return $ IncorrectWithExplanation proverInfo
+                   $ generateErrorExplanation sid formula context analysis
+        Unknown ->
+            return $ IncorrectWithExplanation (ProverName "ATP" "timeout")
+                   $ generateTimeoutExplanation sid formula context analysis
+        Correct _ -> return result
 
 -- ---------------------------------------------------------------------------
 -- Proof analysis
