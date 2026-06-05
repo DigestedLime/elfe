@@ -151,10 +151,6 @@ ruleAnalysis rule formula available =
 -- Pattern matching helpers
 -- ---------------------------------------------------------------------------
 
--- | Formula Eq is defined as always-True, so structural checks must use show.
-formulaElem :: Formula -> [Formula] -> Bool
-formulaElem f = any (\g -> show f == show g)
-
 extractFormulasFromContext :: Context -> [Formula]
 extractFormulasFromContext Empty = []
 extractFormulasFromContext (Context stmts parent) =
@@ -173,7 +169,7 @@ matchInferencePattern target available =
             case findTransitivityMiddle rel (Var x) (Var z) available of
                 Just mid -> Just (TransitivityPattern rel (Var x) mid (Var z))
                 Nothing  ->
-                    if formulaElem (Atom rel [Var z, Var x]) available
+                    if Atom rel [Var z, Var x] `elem` available
                     then Just (SymmetryPattern rel (Var x) (Var z))
                     else tryLogicalPatterns target available
         _ -> tryLogicalPatterns target available
@@ -189,16 +185,15 @@ tryLogicalPatterns target available =
 -- | Find P→Q in context where Q matches target and P is also present.
 findModusPonens :: Formula -> [Formula] -> Maybe InferencePattern
 findModusPonens target available =
-    let impls = [Impl p q | Impl p q <- available, show q == show target]
+    let impls = [Impl p q | Impl p q <- available, q == target]
     in case impls of
-        (impl@(Impl p _):_) | formulaElem p available -> Just (ModusPonensPattern impl p)
+        (impl@(Impl p _):_) | p `elem` available -> Just (ModusPonensPattern impl p)
         _                                              -> Nothing
 
 -- | Find P∧Q in context where either P or Q matches target.
 findConjunctionElim :: Formula -> [Formula] -> Maybe InferencePattern
 findConjunctionElim target available =
-    let conjs = [conj | conj@(And l r) <- available,
-                        show l == show target || show r == show target]
+    let conjs = [conj | conj@(And l r) <- available, l == target || r == target]
     in case conjs of
         (conj:_) -> Just (ConjunctionPattern conj)
         []       -> Nothing
@@ -223,10 +218,8 @@ getRequiredPremises (Just pat) = case pat of
     ConjunctionPattern conj       -> [conj]
     _                             -> []
 
--- | Uses show-based comparison because Formula Eq is always True.
 findMissingPremises :: [Formula] -> [Formula] -> [Formula]
-findMissingPremises required available =
-    filter (\f -> not (formulaElem f available)) required
+findMissingPremises required available = filter (`notElem` available) required
 
 -- ---------------------------------------------------------------------------
 -- Explanation generation

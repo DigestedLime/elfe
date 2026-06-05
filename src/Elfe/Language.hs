@@ -24,7 +24,17 @@ data Formula = Impl Formula Formula  | Iff Formula Formula
   deriving (Generic)
 
 instance Eq Formula where
-    f == f' = True --(show f) == (show f')
+    Impl l r     == Impl l' r'     = l == l' && r == r'
+    Iff l r      == Iff l' r'      = l == l' && r == r'
+    Atom n ts    == Atom n' ts'    = n == n' && ts == ts'
+    Not f        == Not f'         = f == f'
+    Top          == Top            = True
+    Bot          == Bot            = True
+    Or l r       == Or l' r'       = l == l' && r == r'
+    And l r      == And l' r'      = l == l' && r == r'
+    Exists v f   == Exists v' f'   = v == v' && f == f'
+    Forall v f   == Forall v' f'   = v == v' && f == f'
+    _            == _              = False
 
 instance Show Formula where
   show (Impl l r)    = "(" ++ (show l) ++ ") => (" ++ (show r) ++ ")"
