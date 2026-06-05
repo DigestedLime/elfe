@@ -8,7 +8,9 @@ data Term = Cons String [Term]
   deriving (Generic)
 
 instance Eq Term where
-    t == t' = (show t) == (show t')
+    Var s    == Var s'     = s == s'
+    Cons s ts == Cons s' ts' = s == s' && ts == ts'
+    _        == _          = False
 
 instance Show Term where
   show (Var s) = "" ++ s
