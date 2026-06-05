@@ -117,17 +117,20 @@ ruleAnalysis rule formula available =
             let fromX  = [t2 | Atom r [t1, t2] <- available, r == rel, t1 == Var x]
                 toZ    = [t1 | Atom r [t1, t2] <- available, r == rel, t2 == Var z]
                 -- Prefer a pivot that satisfies both halves; fall back to partial
-                pivot  = case filter (`elem` toZ) fromX of
-                            (y:_) -> y
+                mPivot = case filter (`elem` toZ) fromX of
+                            (y:_) -> Just y
                             []    -> case fromX of
-                                        (y:_) -> y   -- have R(x,y), missing R(y,z)
+                                        (y:_) -> Just y   -- have R(x,y), missing R(y,z)
                                         []    -> case toZ of
-                                                    (y:_) -> y   -- have R(y,z), missing R(x,y)
-                                                    []    -> Var "y"  -- have nothing
-                pat     = Just (TransitivityPattern rel (Var x) pivot (Var z))
-                required = [Atom rel [Var x, pivot], Atom rel [pivot, Var z]]
-                missing  = findMissingPremises required available
-            in (pat, required, missing)
+                                                    (y:_) -> Just y   -- have R(y,z), missing R(x,y)
+                                                    []    -> Nothing   -- no evidence; don't guess
+            in case mPivot of
+                Nothing    -> (Nothing, [], [])
+                Just pivot ->
+                    let pat      = Just (TransitivityPattern rel (Var x) pivot (Var z))
+                        required = [Atom rel [Var x, pivot], Atom rel [pivot, Var z]]
+                        missing  = findMissingPremises required available
+                    in (pat, required, missing)
 
         -- Symmetry: R(x,z) — need R(z,x)
         ("symmetry", Atom rel [Var x, Var z]) ->
