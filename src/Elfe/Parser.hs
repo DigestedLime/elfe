@@ -336,8 +336,10 @@ unfold (Impl l r) bvs =
          by <- optionMaybe subContext
          reserved "."
          nId <- newId
-         rId <- newId
-         return $ (Statement lId (bindVars l bvs) Assumed lPos) : derivation
+         let conclusionProof = maybe ByContext BySubcontext by
+         return $ (Statement lId (bindVars l bvs) Assumed lPos)
+                : derivation
+               ++ [Statement nId (bindVars r bvs) conclusionProof rPos]
 
 unfold (Not (Impl l r)) bvs = unfold (And l (Not r)) bvs
 unfold (Not (Forall v f)) bvs = unfold (Exists v (Not f)) bvs
