@@ -106,7 +106,7 @@ data StatementStatus = StatementStatus { sid :: String
 
 -- Error explanation data types
 data ErrorExplanation = ErrorExplanation
-  { failedStep :: Int
+  { failedStep :: String
   , attemptedRule :: String
   , targetFormula :: Formula
   , requiredPremises :: [Formula]
@@ -166,7 +166,7 @@ getErrorExplanation (IncorrectWithExplanation _ expl) = Just expl
 getErrorExplanation _ = Nothing
 
 -- Create basic error explanation
-createMissingPremiseError :: Int -> String -> Formula -> [Formula] -> [Formula] -> Context -> ErrorExplanation
+createMissingPremiseError :: String -> String -> Formula -> [Formula] -> [Formula] -> Context -> ErrorExplanation
 createMissingPremiseError step rule target required available context =
   ErrorExplanation
     { failedStep = step
@@ -202,7 +202,7 @@ formatErrorExplanation explanation =
       errType = errorType explanation
   in case errType of
        MissingPremiseError missingPremises -> 
-         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "Step " ++ stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
          "But " ++ rule ++ " requires:\n" ++
          formatPremises (requiredPremises explanation) ++ "\n" ++
          "Available in context:\n" ++
@@ -211,7 +211,7 @@ formatErrorExplanation explanation =
          formatPremises missingPremises ++ "\n" ++
          "Error Type: Missing Premise"
        ATPTimeoutError ->
-         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "Step " ++ stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
          "ATP timed out while trying to verify this step.\n" ++
          "This could be due to:\n" ++
          "- Missing premises that weren't detected\n" ++
@@ -220,29 +220,29 @@ formatErrorExplanation explanation =
          "Available premises: " ++ show (length available) ++ " formulas\n" ++
          "Error Type: ATP Timeout"
        ATPContradictionError contradictions ->
-         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "Step " ++ stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
          "The ATP found a contradiction in the assumptions.\n" ++
          "Contradicting formulas:\n" ++
          formatPremises contradictions ++ "\n" ++
          "Error Type: ATP Contradiction"
        InvalidInferenceError inferenceRule badPremises ->
-         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "Step " ++ stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
          "The inference rule '" ++ inferenceRule ++ "' cannot be applied here.\n" ++
          "Problematic premises:\n" ++
          formatPremises badPremises ++ "\n" ++
          "Error Type: Invalid Inference"
        QuantifierScopeError varName boundFormula ->
-         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "Step " ++ stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
          "Quantifier scope error: variable '" ++ varName ++ "' is out of scope.\n" ++
          "In formula: " ++ show boundFormula ++ "\n" ++
          "Error Type: Quantifier Scope Error"
        VariableCaptureError varName captureFormula ->
-         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "Step " ++ stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
          "Variable capture: '" ++ varName ++ "' would be captured.\n" ++
          "In formula: " ++ show captureFormula ++ "\n" ++
          "Error Type: Variable Capture Error"
        UnknownError ->
-         "Step " ++ show stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
+         "Step " ++ stepNum ++ ": " ++ show target ++ " by " ++ rule ++ "\n" ++
          "An unknown error occurred during proof verification.\n" ++
          "Error Type: Unknown Error"
 

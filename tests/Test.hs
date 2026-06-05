@@ -42,7 +42,7 @@ emptyCtx = Context [] Empty
 
 dummyExpl :: ErrorType -> ErrorExplanation
 dummyExpl et = ErrorExplanation
-    { failedStep        = 1
+    { failedStep        = "s1"
     , attemptedRule     = "test"
     , targetFormula     = Top
     , requiredPremises  = []
@@ -205,7 +205,8 @@ testAnalyzeProofAttempt = do
 testAnalyzeByRules :: IO ()
 testAnalyzeByRules = do
     -- Transitivity with only left half: R(y,z) should be identified as missing
-    let a1 = analyzeByRules ["transitivity"] rxz (ctxFrom [rxy])
+    let ctx1 = ctxFrom [rxy]
+        a1 = analyzeByRules ["transitivity"] rxz ctx1 ctx1
     check "transitivity rule sets intendedRule" $
         intendedRule a1 == Just "transitivity"
     check "transitivity pattern set even with only left half" $
@@ -216,41 +217,48 @@ testAnalyzeByRules = do
         any (\f -> show f == show ryz) (missingFormulas a1)
 
     -- Transitivity with only right half: R(x,y) should be missing
-    let a2 = analyzeByRules ["transitivity"] rxz (ctxFrom [ryz])
+    let ctx2 = ctxFrom [ryz]
+        a2 = analyzeByRules ["transitivity"] rxz ctx2 ctx2
     check "R(x,y) identified as missing when only R(y,z) present" $
         any (\f -> show f == show rxy) (missingFormulas a2)
 
     -- Transitivity with both halves: nothing missing
-    let a3 = analyzeByRules ["transitivity"] rxz (ctxFrom [rxy, ryz])
+    let ctx3 = ctxFrom [rxy, ryz]
+        a3 = analyzeByRules ["transitivity"] rxz ctx3 ctx3
     check "nothing missing when both transitivity halves present" $
         null (missingFormulas a3)
 
-    -- Transitivity with empty context: uses placeholder pivot Var "y"
-    let a4 = analyzeByRules ["transitivity"] rxz (ctxFrom [])
-    check "both R(x,y) and R(y,z) missing when context empty" $
-        length (missingFormulas a4) == 2
+    -- Transitivity with empty context: no pivot determinable, no false diagnosis
+    let ctx4 = ctxFrom []
+        a4 = analyzeByRules ["transitivity"] rxz ctx4 ctx4
+    check "no false missing-premise report when context has no transitivity evidence" $
+        null (missingFormulas a4)
 
     -- Symmetry with no reversed form: R(z,x) should be missing
-    let a5 = analyzeByRules ["symmetry"] rxz (ctxFrom [])
+    let ctx5 = ctxFrom []
+        a5 = analyzeByRules ["symmetry"] rxz ctx5 ctx5
     check "symmetry rule sets intendedRule" $
         intendedRule a5 == Just "symmetry"
     check "R(z,x) identified as missing for symmetry" $
         any (\f -> show f == show rzx) (missingFormulas a5)
 
     -- Symmetry with reversed form present: nothing missing
-    let a6 = analyzeByRules ["symmetry"] rxz (ctxFrom [rzx])
+    let ctx6 = ctxFrom [rzx]
+        a6 = analyzeByRules ["symmetry"] rxz ctx6 ctx6
     check "nothing missing for symmetry when R(z,x) present" $
         null (missingFormulas a6)
 
     -- Unknown rule: falls back to analyzeProofAttempt behaviour
-    let a7 = analyzeByRules ["unknownRule"] rxz (ctxFrom [])
+    let ctx7 = ctxFrom []
+        a7 = analyzeByRules ["unknownRule"] rxz ctx7 ctx7
     check "unknown rule still sets intendedRule" $
         intendedRule a7 == Just "unknownRule"
     check "unknown rule with empty context finds no pattern" $
         inferencePattern a7 == Nothing
 
     -- Empty rule list: same as analyzeProofAttempt
-    let a8 = analyzeByRules [] rxz (ctxFrom [rxy, ryz])
+    let ctx8 = ctxFrom [rxy, ryz]
+        a8 = analyzeByRules [] rxz ctx8 ctx8
     check "empty rule list falls back to pattern inference" $
         inferencePattern a8 == Just (TransitivityPattern "R" (Var "x") (Var "y") (Var "z"))
 
@@ -262,8 +270,8 @@ testGenerateExplanation :: IO ()
 testGenerateExplanation = do
     let analysis = mkAnalysis rxz [rxy] [rxy, ryz] [ryz]
     let expl = generateErrorExplanation "s5" rxz emptyCtx analysis
-    check "failedStep parsed from id" $
-        failedStep expl == 5
+    check "failedStep is raw step id" $
+        failedStep expl == "s5"
     check "missingPremises in explanation matches analysis" $
         map show (missingPremises expl) == [show ryz]
     check "MissingPremiseError produced when missing is non-empty" $
@@ -292,7 +300,7 @@ testGenerateExplanation = do
 testFormatMissingPremises :: IO ()
 testFormatMissingPremises = do
     let expl = ErrorExplanation
-          { failedStep        = 4
+          { failedStep        = "s4"
           , attemptedRule     = "transitivity"
           , targetFormula     = rxz
           , requiredPremises  = [rxy, ryz]

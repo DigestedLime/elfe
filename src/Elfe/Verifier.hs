@@ -3,6 +3,7 @@ module Elfe.Verifier where
 import Control.Applicative
 import Control.Exception
 import Control.Monad
+import Data.Maybe (listToMaybe)
 
 import Elfe.Language
 import Elfe.Prover
@@ -31,8 +32,9 @@ verStat (Statement id f ByContext pos) context = do
     status <- checkStat (Statement id f ByContext pos) context Nothing
     return $ StatementStatus id f status [] pos Nothing
 verStat (Statement id f (BySubcontext ids) pos) context = do
-    let analysis = analyzeByRules ids f context
-    status <- checkStat (Statement id f ByContext pos) (restrictContext context ids) (Just analysis)
+    let restrictedCtx = restrictContext context ids
+        analysis      = analyzeByRules ids f context restrictedCtx
+    status <- checkStat (Statement id f ByContext pos) restrictedCtx (Just analysis)
     return $ StatementStatus id f status [] pos (intendedRule analysis)
 verStat (Statement id f (BySequence sequ) pos) context = do
     sequStatus <- verSeq sequ (Context [] context)
@@ -89,33 +91,48 @@ analyzeProofAttempt formula context =
         , intendedRule      = Nothing
         }
 
--- | Analyse a proof attempt when the intended rule names are known (from the
---   "by <rule>" annotation preserved in BySubcontext).  Uses the full context
---   so missing premises are reported accurately even though the ATP only sees
---   the restricted context.
-analyzeByRules :: [String] -> Formula -> Context -> ProofAnalysis
-analyzeByRules []    formula context = analyzeProofAttempt formula context
-analyzeByRules (r:_) formula context =
-    let available             = extractFormulasFromContext context
-        (pat, required, missing) = ruleAnalysis r formula available
+data IdClass = RuleName String | StepId String
+
+-- | IDs that look like idPrefix + integer (e.g. "s1", "s42") are step
+--   citations; everything else (e.g. "transitivity", "symmetry") is a rule name.
+classifyId :: String -> IdClass
+classifyId s = case reads (drop (length idPrefix) s) :: [(Int, String)] of
+    [(_, "")] -> StepId s
+    _         -> RuleName s
+
+-- | Analyse a proof attempt when rule/step IDs are known (from the "by" annotation).
+--   fullCtx is used for rule-pattern detection; restrictedCtx determines which
+--   premises the ATP actually sees, so missing premises are computed against it.
+analyzeByRules :: [String] -> Formula -> Context -> Context -> ProofAnalysis
+analyzeByRules ids formula fullCtx restrictedCtx =
+    let classified  = map classifyId ids
+        ruleNames   = [r | RuleName r <- classified]
+        fullAvail   = extractFormulasFromContext fullCtx
+        restrAvail  = extractFormulasFromContext restrictedCtx
+        (pat, req, missing) = case ruleNames of
+            (r:_) -> ruleAnalysis r formula fullAvail restrAvail
+            []    -> let p = matchInferencePattern formula restrAvail
+                     in (p, getRequiredPremises p, findMissingPremises (getRequiredPremises p) restrAvail)
     in ProofAnalysis
         { analysisTarget    = formula
-        , availableFormulas = available
+        , availableFormulas = restrAvail
         , inferencePattern  = pat
-        , requiredFormulas  = required
+        , requiredFormulas  = req
         , missingFormulas   = missing
-        , intendedRule      = Just r
+        , intendedRule      = listToMaybe ruleNames
         }
 
 -- | Map a single rule name + target formula to (pattern, required, missing).
-ruleAnalysis :: String -> Formula -> [Formula]
+--   fullAvail is used to find the inference pattern (e.g. transitivity pivot);
+--   restrAvail is used to determine which required premises are actually missing.
+ruleAnalysis :: String -> Formula -> [Formula] -> [Formula]
             -> (Maybe InferencePattern, [Formula], [Formula])
-ruleAnalysis rule formula available =
+ruleAnalysis rule formula fullAvail restrAvail =
     case (rule, formula) of
-        -- Transitivity: R(x,z) — find what half IS present, report the other half missing
+        -- Transitivity: R(x,z) — find pivot from full context, report missing against restricted
         ("transitivity", Atom rel [Var x, Var z]) ->
-            let fromX  = [t2 | Atom r [t1, t2] <- available, r == rel, t1 == Var x]
-                toZ    = [t1 | Atom r [t1, t2] <- available, r == rel, t2 == Var z]
+            let fromX  = [t2 | Atom r [t1, t2] <- fullAvail, r == rel, t1 == Var x]
+                toZ    = [t1 | Atom r [t1, t2] <- fullAvail, r == rel, t2 == Var z]
                 -- Prefer a pivot that satisfies both halves; fall back to partial
                 mPivot = case filter (`elem` toZ) fromX of
                             (y:_) -> Just y
@@ -129,14 +146,14 @@ ruleAnalysis rule formula available =
                 Just pivot ->
                     let pat      = Just (TransitivityPattern rel (Var x) pivot (Var z))
                         required = [Atom rel [Var x, pivot], Atom rel [pivot, Var z]]
-                        missing  = findMissingPremises required available
+                        missing  = findMissingPremises required restrAvail
                     in (pat, required, missing)
 
         -- Symmetry: R(x,z) — need R(z,x)
         ("symmetry", Atom rel [Var x, Var z]) ->
             let pat      = Just (SymmetryPattern rel (Var x) (Var z))
                 required = [Atom rel [Var z, Var x]]
-                missing  = findMissingPremises required available
+                missing  = findMissingPremises required restrAvail
             in (pat, required, missing)
 
         -- Reflexivity: R(x,x) — no extra premises needed
@@ -145,9 +162,9 @@ ruleAnalysis rule formula available =
 
         -- Unknown or inapplicable rule: fall back to pattern inference
         _ ->
-            let pat      = matchInferencePattern formula available
+            let pat      = matchInferencePattern formula restrAvail
                 required = getRequiredPremises pat
-                missing  = findMissingPremises required available
+                missing  = findMissingPremises required restrAvail
             in (pat, required, missing)
 
 -- ---------------------------------------------------------------------------
@@ -238,7 +255,7 @@ generateErrorExplanation stepId target context analysis =
                                       Nothing  -> "unknown inference"
         errType  = if null missing then UnknownError else MissingPremiseError missing
     in ErrorExplanation
-        { failedStep        = parseStepId stepId
+        { failedStep        = stepId
         , attemptedRule     = ruleStr
         , targetFormula     = target
         , requiredPremises  = requiredFormulas analysis
@@ -254,7 +271,7 @@ generateTimeoutExplanation stepId target context analysis =
                       Just r  -> r
                       Nothing -> "unknown"
     in ErrorExplanation
-        { failedStep        = parseStepId stepId
+        { failedStep        = stepId
         , attemptedRule     = ruleStr
         , targetFormula     = target
         , requiredPremises  = requiredFormulas analysis
@@ -263,11 +280,6 @@ generateTimeoutExplanation stepId target context analysis =
         , contextInfo       = context
         , errorType         = ATPTimeoutError
         }
-
-parseStepId :: String -> Int
-parseStepId sid = case reads (drop (length idPrefix) sid) of
-    [(n, "")] -> n
-    _         -> 0
 
 -- ---------------------------------------------------------------------------
 -- ProofTrace construction
