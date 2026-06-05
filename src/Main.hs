@@ -56,26 +56,26 @@ printRes ss = do
 
 collectExplainedFailures :: [StatementStatus] -> [StatementStatus]
 collectExplainedFailures [] = []
-collectExplainedFailures (s@(StatementStatus _ _ (IncorrectWithExplanation _ _) cs _):rest) =
+collectExplainedFailures (s@(StatementStatus _ _ (IncorrectWithExplanation _ _) cs _ _):rest) =
     s : collectExplainedFailures cs ++ collectExplainedFailures rest
-collectExplainedFailures (StatementStatus _ _ _ cs _:rest) =
+collectExplainedFailures (StatementStatus _ _ _ cs _ _:rest) =
     collectExplainedFailures cs ++ collectExplainedFailures rest
 
 collectPlainFailures :: [StatementStatus] -> [StatementStatus]
 collectPlainFailures [] = []
-collectPlainFailures (s@(StatementStatus _ _ (Incorrect _) cs _):rest) =
+collectPlainFailures (s@(StatementStatus _ _ (Incorrect _) cs _ _):rest) =
     s : collectPlainFailures cs ++ collectPlainFailures rest
-collectPlainFailures (StatementStatus _ _ _ cs _:rest) =
+collectPlainFailures (StatementStatus _ _ _ cs _ _:rest) =
     collectPlainFailures cs ++ collectPlainFailures rest
 
 printExplained :: StatementStatus -> IO ()
-printExplained (StatementStatus sid _ (IncorrectWithExplanation _ expl) _ _) = do
+printExplained (StatementStatus sid _ (IncorrectWithExplanation _ expl) _ _ _) = do
     putStrLn $ "--- " ++ sid ++ " ---"
     putStrLn $ formatErrorExplanation expl
     putStrLn ""
 printExplained _ = return ()
 
 printPlain :: StatementStatus -> IO ()
-printPlain (StatementStatus sid f (Incorrect _) _ _) =
+printPlain (StatementStatus sid f (Incorrect _) _ _ _) =
     putStrLn $ "--- " ++ sid ++ " failed: " ++ show f
 printPlain _ = return ()

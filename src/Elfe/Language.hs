@@ -100,6 +100,7 @@ data StatementStatus = StatementStatus { sid :: String
                                        , status :: ProofStatus
                                        , children :: [StatementStatus]
                                        , opos :: Position
+                                       , statementRule :: Maybe String
                                        }
   deriving (Eq, Show, Generic)
 
@@ -285,9 +286,9 @@ formatPremises premises =
 
 filterSs :: [StatementStatus] -> ProofStatus -> [StatementStatus]
 filterSs [] _ = []
-filterSs (StatementStatus i f s cs p:ss) ps = if s == ps
-                                                  then StatementStatus i f s (filterSs cs ps) p : filterSs ss ps
-                                                  else filterSs ss ps
+filterSs (StatementStatus i f s cs p r:ss) ps = if s == ps
+                                                    then StatementStatus i f s (filterSs cs ps) p r : filterSs ss ps
+                                                    else filterSs ss ps
 
 
 

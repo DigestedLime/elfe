@@ -26,20 +26,20 @@ verifySplit (c:cs) context = do
 
 verStat :: Statement -> Context -> IO StatementStatus
 verStat (Statement id f Assumed pos) _context =
-    return $ StatementStatus id f (Correct NotProven) [] pos
+    return $ StatementStatus id f (Correct NotProven) [] pos Nothing
 verStat (Statement id f ByContext pos) context = do
     status <- checkStat (Statement id f ByContext pos) context Nothing
-    return $ StatementStatus id f status [] pos
+    return $ StatementStatus id f status [] pos Nothing
 verStat (Statement id f (BySubcontext ids) pos) context = do
     let analysis = analyzeByRules ids f context
     status <- checkStat (Statement id f ByContext pos) (restrictContext context ids) (Just analysis)
-    return $ StatementStatus id f status [] pos
+    return $ StatementStatus id f status [] pos (intendedRule analysis)
 verStat (Statement id f (BySequence sequ) pos) context = do
     sequStatus <- verSeq sequ (Context [] context)
-    return $ StatementStatus id f (foldStatus sequStatus) sequStatus pos
+    return $ StatementStatus id f (foldStatus sequStatus) sequStatus pos Nothing
 verStat (Statement id f (BySplit split) pos) context = do
     splitStatus <- verifySplit split context
-    return $ StatementStatus id f (foldStatus splitStatus) splitStatus pos
+    return $ StatementStatus id f (foldStatus splitStatus) splitStatus pos Nothing
 
 -- | An optional pre-computed ProofAnalysis can be supplied (used when the
 --   caller already knows the intended rule names before restricting context).
@@ -288,10 +288,12 @@ flattenStatuses = go []
     go acc (s:ss) = go (s : acc) (children s ++ ss)
 
 statementToStep :: Int -> StatementStatus -> TraceStep
-statementToStep n (StatementStatus _ f st cs _) = TraceStep
+statementToStep n (StatementStatus _ f st cs _ rule) = TraceStep
     { stepNumber  = n
     , stepFormula = f
-    , stepRule    = ruleFromStatus st
+    , stepRule    = case (rule, st) of
+                       (Just r, Correct _) -> r
+                       _                   -> ruleFromStatus st
     , stepPremises = case st of
                          IncorrectWithExplanation _ expl -> availablePremises expl
                          _                               -> []
@@ -314,7 +316,7 @@ ruleFromStatus Unknown                           = "unknown"
 
 foldStatus :: [StatementStatus] -> ProofStatus
 foldStatus [] = Correct NotProven
-foldStatus ((StatementStatus _ _ s _ _):sts)
+foldStatus ((StatementStatus _ _ s _ _ _):sts)
     | isCorrect s = foldStatus sts
     | otherwise   = s
 
