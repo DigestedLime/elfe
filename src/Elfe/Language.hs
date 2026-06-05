@@ -120,7 +120,8 @@ data MissingPremise = MissingPremise
 
 data InferencePattern = TransitivityPattern String Term Term Term  -- rel x mid z
                       | SymmetryPattern String Term Term           -- rel x z (need R(z,x))
-                      | ModusPonensPattern Formula Formula
+                      | ModusPonensPattern Formula Formula         -- Impl P Q, P
+                      | ConjunctionPattern Formula                 -- the And formula containing the target
                       | UniversalIntroPattern String Formula
                       | ExistentialIntroPattern String Formula
                       | ReflexivityPattern Term

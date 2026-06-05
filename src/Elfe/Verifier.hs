@@ -163,6 +163,7 @@ extractFormulasFromContext (Context stmts parent) =
 -- | Match the formula against known inference patterns.
 --   Reflexivity is checked first because its guard (x1 == x2) would otherwise
 --   be shadowed by the general two-variable branch below it.
+--   Modus ponens and conjunction elimination are tried last as catch-alls.
 matchInferencePattern :: Formula -> [Formula] -> Maybe InferencePattern
 matchInferencePattern target available =
     case target of
@@ -174,8 +175,33 @@ matchInferencePattern target available =
                 Nothing  ->
                     if formulaElem (Atom rel [Var z, Var x]) available
                     then Just (SymmetryPattern rel (Var x) (Var z))
-                    else Nothing
-        _ -> Nothing
+                    else tryLogicalPatterns target available
+        _ -> tryLogicalPatterns target available
+
+-- | Try modus ponens (P→Q, P in context ⊢ Q) then conjunction elimination
+--   (P∧Q in context ⊢ P or Q).  These apply to any formula shape.
+tryLogicalPatterns :: Formula -> [Formula] -> Maybe InferencePattern
+tryLogicalPatterns target available =
+    case findModusPonens target available of
+        Just pat -> Just pat
+        Nothing  -> findConjunctionElim target available
+
+-- | Find P→Q in context where Q matches target and P is also present.
+findModusPonens :: Formula -> [Formula] -> Maybe InferencePattern
+findModusPonens target available =
+    let impls = [Impl p q | Impl p q <- available, show q == show target]
+    in case impls of
+        (impl@(Impl p _):_) | formulaElem p available -> Just (ModusPonensPattern impl p)
+        _                                              -> Nothing
+
+-- | Find P∧Q in context where either P or Q matches target.
+findConjunctionElim :: Formula -> [Formula] -> Maybe InferencePattern
+findConjunctionElim target available =
+    let conjs = [conj | conj@(And l r) <- available,
+                        show l == show target || show r == show target]
+    in case conjs of
+        (conj:_) -> Just (ConjunctionPattern conj)
+        []       -> Nothing
 
 -- | Scan available formulas to find a middle term y s.t. R(x,y) and R(y,z).
 findTransitivityMiddle :: String -> Term -> Term -> [Formula] -> Maybe Term
@@ -193,6 +219,8 @@ getRequiredPremises (Just pat) = case pat of
     TransitivityPattern rel x y z -> [Atom rel [x, y], Atom rel [y, z]]
     SymmetryPattern rel x z       -> [Atom rel [z, x]]
     ReflexivityPattern _          -> []
+    ModusPonensPattern impl prem  -> [impl, prem]
+    ConjunctionPattern conj       -> [conj]
     _                             -> []
 
 -- | Uses show-based comparison because Formula Eq is always True.

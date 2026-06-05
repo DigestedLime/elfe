@@ -322,6 +322,58 @@ testFormatMissingPremises = do
         show ryz `isInfixOf` out2
 
 -- ---------------------------------------------------------------------------
+-- Modus ponens and conjunction elimination patterns
+-- ---------------------------------------------------------------------------
+
+pq, p, q :: Formula
+p  = Atom "P" []
+q  = Atom "Q" []
+pq = Impl p q       -- P → Q
+
+testLogicalPatterns :: IO ()
+testLogicalPatterns = do
+    -- Modus ponens: P→Q and P both in context, target Q
+    check "modus ponens detected when P→Q and P both present" $
+        case matchInferencePattern q [pq, p] of
+            Just (ModusPonensPattern _ _) -> True
+            _                             -> False
+
+    -- Required premises for modus ponens
+    check "modus ponens requires both implication and premise" $
+        case matchInferencePattern q [pq, p] of
+            Just pat -> length (getRequiredPremises (Just pat)) == 2
+            _        -> False
+
+    -- No modus ponens when P is missing from context
+    check "no modus ponens when premise P is absent" $
+        case matchInferencePattern q [pq] of
+            Just (ModusPonensPattern _ _) -> False
+            _                             -> True
+
+    -- Conjunction elimination: P∧Q in context, target P
+    let conj = And p q
+    check "conjunction elim detected when P∧Q in context, target P" $
+        case matchInferencePattern p [conj] of
+            Just (ConjunctionPattern _) -> True
+            _                           -> False
+
+    -- Conjunction elimination: P∧Q in context, target Q
+    check "conjunction elim detected when P∧Q in context, target Q" $
+        case matchInferencePattern q [conj] of
+            Just (ConjunctionPattern _) -> True
+            _                           -> False
+
+    -- Required premise for conjunction is the And formula itself
+    check "conjunction elim requires the conjunction formula" $
+        case matchInferencePattern p [conj] of
+            Just pat -> map show (getRequiredPremises (Just pat)) == [show conj]
+            _        -> False
+
+    -- No pattern when neither applies
+    check "no logical pattern when context is unrelated" $
+        matchInferencePattern q [p] == Nothing
+
+-- ---------------------------------------------------------------------------
 -- Entry point
 -- ---------------------------------------------------------------------------
 
@@ -344,4 +396,6 @@ main = do
     testGenerateExplanation
     putStrLn "\n-- formatErrorExplanation with real missing premises --"
     testFormatMissingPremises
+    putStrLn "\n-- Logical Patterns (modus ponens, conjunction elim) --"
+    testLogicalPatterns
     putStrLn "\nAll tests passed."
