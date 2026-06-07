@@ -1,5 +1,6 @@
 module Elfe.Prover where
 
+import Data.IORef
 import Data.List
 --import Data.String.Utils (replace)
 import System.Process
@@ -10,6 +11,7 @@ import System.Directory (removeFile)
 import System.Random
 import Control.Concurrent
 import Control.Concurrent.Chan
+import Control.Exception (SomeException, catch, IOException)
 import Control.Monad
 
 import Elfe.Language
@@ -27,47 +29,50 @@ prove task = do
     writeFile tptpFile task
     done <- newEmptyMVar
     chan <- newChan
-    pThreads <- mapM (\p -> forkIO $ runProver chan task p done tptpFile) provers
-    cThreads <- mapM (\p -> forkIO $ runCountermodler chan task p done tptpFile) countermodler
+    handles <- newIORef []
+    pThreads <- mapM (\p -> forkIO $ runProver handles chan task p done tptpFile) provers
+    cThreads <- mapM (\p -> forkIO $ runCountermodler handles chan task p done tptpFile) countermodler
     timeoutThread <- forkIO $ timeout task chan done
     readMVar done
     result <- readChan chan
-    mapM killThread ([timeoutThread]++pThreads++cThreads)
+    mapM killThread ([timeoutThread] ++ pThreads ++ cThreads)
+    hs <- readIORef handles
+    mapM_ terminateAndReap hs
     removeFile tptpFile
     return result
 
-runProver :: Chan ProofStatus -> String -> Prover -> MVar Bool -> String -> IO ()
-runProver chan task (Prover name command args provedMsg disprovedMsg unknownMsg) done tptpFile = do
-  let run = runInteractiveProcess command (tptpFile:args) Nothing Nothing
-  do 
-    (wh,rh,eh,ph) <- run
+-- | Terminate an OS subprocess and reap it. Errors are swallowed because the
+--   process may have already exited by the time cleanup runs.
+terminateAndReap :: ProcessHandle -> IO ()
+terminateAndReap ph = do
+    let swallow :: IOException -> IO ()
+        swallow _ = return ()
+    terminateProcess ph `catch` swallow
+    void (waitForProcess ph) `catch` swallow
+
+runProver :: IORef [ProcessHandle] -> Chan ProofStatus -> String -> Prover -> MVar Bool -> String -> IO ()
+runProver handles chan task (Prover name command args provedMsg disprovedMsg unknownMsg) done tptpFile = do
+    (wh, rh, eh, ph) <- runInteractiveProcess command (tptpFile:args) Nothing Nothing
+    atomicModifyIORef' handles (\hs -> (ph:hs, ()))
     hPutStrLn wh task ; hClose wh
     ofl <- hGetContents rh
-    --efl <- hGetContents eh
-    let lns = filter (not . null) $ lines $ ofl -- ++ efl
-
+    let lns = filter (not . null) $ lines ofl
     let pos = any (\l -> any (`isPrefixOf` l) provedMsg) lns
         neg = any (\l -> any (`isPrefixOf` l) disprovedMsg) lns
         unk = any (\l -> any (`isPrefixOf` l) unknownMsg) lns
-
-    hClose eh ; waitForProcess ph
-
+    hClose eh
     when pos (writeChan chan (Correct (ProverName name "")) >> putMVar done True)
-    --when (neg) (("DISPROVED by " ++ name ++ "\n" ++ task) (return ())) -- writeChan chan (Incorrect (ProverName name "")) >> putMVar done True
-    --when (not pos && not neg) (("UNKNOWN by " ++ name ++ "\n") (return ()))
 
-
-runCountermodler :: Chan ProofStatus -> String -> Countermodler -> MVar Bool -> String -> IO ()
-runCountermodler chan task (Countermodler name command args clauseMarker) done tptpFile = do
-  let run = runInteractiveProcess command (tptpFile:args) Nothing Nothing
-  do 
-    (wh,rh,eh,ph) <- run
+runCountermodler :: IORef [ProcessHandle] -> Chan ProofStatus -> String -> Countermodler -> MVar Bool -> String -> IO ()
+runCountermodler handles chan task (Countermodler name command args clauseMarker) done tptpFile = do
+    (wh, rh, eh, ph) <- runInteractiveProcess command (tptpFile:args) Nothing Nothing
+    atomicModifyIORef' handles (\hs -> (ph:hs, ()))
     hPutStrLn wh task ; hClose wh
     ofl <- hGetContents rh
     let startMarker = elemIndex clauseMarker $ lines ofl
     case startMarker of
       Nothing -> return ()
-      Just start -> do 
+      Just start -> do
         let contermodel = retrieveClauses $ drop (start+1) $ lines ofl
         writeChan chan (Incorrect (ProverName name contermodel)) >> putMVar done True
 
