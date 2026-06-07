@@ -129,18 +129,47 @@ ruleAnalysis :: String -> Formula -> [Formula] -> [Formula]
             -> (Maybe InferencePattern, [Formula], [Formula])
 ruleAnalysis rule formula fullAvail restrAvail =
     case (rule, formula) of
-        -- Transitivity: R(x,z) — find pivot from full context, report missing against restricted
-        ("transitivity", Atom rel [Var x, Var z]) ->
-            let fromX  = [t2 | Atom r [t1, t2] <- fullAvail, r == rel, t1 == Var x]
-                toZ    = [t1 | Atom r [t1, t2] <- fullAvail, r == rel, t2 == Var z]
-                -- Prefer a pivot that satisfies both halves; fall back to partial
+        -- relapp-encoded transitivity: relapp(R, x, z)
+        ("transitivity", Atom "relapp" [rel, Var x, Var z]) ->
+            let fromX  = [t2 | Atom "relapp" [r, t1, t2] <- fullAvail, r == rel, t1 == Var x]
+                toZ    = [t1 | Atom "relapp" [r, t1, t2] <- fullAvail, r == rel, t2 == Var z]
                 mPivot = case filter (`elem` toZ) fromX of
                             (y:_) -> Just y
                             []    -> case fromX of
-                                        (y:_) -> Just y   -- have R(x,y), missing R(y,z)
+                                        (y:_) -> Just y
                                         []    -> case toZ of
-                                                    (y:_) -> Just y   -- have R(y,z), missing R(x,y)
-                                                    []    -> Nothing   -- no evidence; don't guess
+                                                    (y:_) -> Just y
+                                                    []    -> Nothing
+            in case mPivot of
+                Nothing    -> (Nothing, [], [])
+                Just pivot ->
+                    let pat      = Just (RelappTransitivityPattern rel (Var x) pivot (Var z))
+                        required = [Atom "relapp" [rel, Var x, pivot], Atom "relapp" [rel, pivot, Var z]]
+                        missing  = findMissingPremises required restrAvail
+                    in (pat, required, missing)
+
+        -- relapp-encoded symmetry: relapp(R, x, z) — need relapp(R, z, x)
+        ("symmetry", Atom "relapp" [rel, Var x, Var z]) ->
+            let pat      = Just (RelappSymmetryPattern rel (Var x) (Var z))
+                required = [Atom "relapp" [rel, Var z, Var x]]
+                missing  = findMissingPremises required restrAvail
+            in (pat, required, missing)
+
+        -- relapp-encoded reflexivity: relapp(R, x, x)
+        ("reflexivity", Atom "relapp" [_, Var x1, Var x2]) | x1 == x2 ->
+            (Just (ReflexivityPattern (Var x1)), [], [])
+
+        -- raw 2-arg transitivity: R(x, z)
+        ("transitivity", Atom rel [Var x, Var z]) ->
+            let fromX  = [t2 | Atom r [t1, t2] <- fullAvail, r == rel, t1 == Var x]
+                toZ    = [t1 | Atom r [t1, t2] <- fullAvail, r == rel, t2 == Var z]
+                mPivot = case filter (`elem` toZ) fromX of
+                            (y:_) -> Just y
+                            []    -> case fromX of
+                                        (y:_) -> Just y
+                                        []    -> case toZ of
+                                                    (y:_) -> Just y
+                                                    []    -> Nothing
             in case mPivot of
                 Nothing    -> (Nothing, [], [])
                 Just pivot ->
@@ -149,14 +178,14 @@ ruleAnalysis rule formula fullAvail restrAvail =
                         missing  = findMissingPremises required restrAvail
                     in (pat, required, missing)
 
-        -- Symmetry: R(x,z) — need R(z,x)
+        -- raw 2-arg symmetry: R(x, z) — need R(z, x)
         ("symmetry", Atom rel [Var x, Var z]) ->
             let pat      = Just (SymmetryPattern rel (Var x) (Var z))
                 required = [Atom rel [Var z, Var x]]
                 missing  = findMissingPremises required restrAvail
             in (pat, required, missing)
 
-        -- Reflexivity: R(x,x) — no extra premises needed
+        -- raw 2-arg reflexivity: R(x, x)
         ("reflexivity", Atom rel [Var x1, Var x2]) | x1 == x2 ->
             (Just (ReflexivityPattern (Var x1)), [], [])
 
@@ -183,8 +212,21 @@ extractFormulasFromContext (Context stmts parent) =
 matchInferencePattern :: Formula -> [Formula] -> Maybe InferencePattern
 matchInferencePattern target available =
     case target of
+        -- relapp-encoded: relapp(R, x, x) — reflexivity
+        Atom "relapp" [_, Var x1, Var x2] | x1 == x2 ->
+            Just (ReflexivityPattern (Var x1))
+        -- relapp-encoded: relapp(R, x, z) — transitivity / symmetry
+        Atom "relapp" [rel, Var x, Var z] ->
+            case findTransitivityMiddle_relapp rel (Var x) (Var z) available of
+                Just mid -> Just (RelappTransitivityPattern rel (Var x) mid (Var z))
+                Nothing  ->
+                    if Atom "relapp" [rel, Var z, Var x] `elem` available
+                    then Just (RelappSymmetryPattern rel (Var x) (Var z))
+                    else tryLogicalPatterns target available
+        -- raw 2-arg atom: R(x, x) — reflexivity
         Atom rel [Var x1, Var x2] | x1 == x2 ->
             Just (ReflexivityPattern (Var x1))
+        -- raw 2-arg atom: R(x, z) — transitivity / symmetry
         Atom rel [Var x, Var z] ->
             case findTransitivityMiddle rel (Var x) (Var z) available of
                 Just mid -> Just (TransitivityPattern rel (Var x) mid (Var z))
@@ -218,7 +260,7 @@ findConjunctionElim target available =
         (conj:_) -> Just (ConjunctionPattern conj)
         []       -> Nothing
 
--- | Scan available formulas to find a middle term y s.t. R(x,y) and R(y,z).
+-- | Scan 2-arg atoms for a middle term y s.t. rel(x,y) and rel(y,z).
 findTransitivityMiddle :: String -> Term -> Term -> [Formula] -> Maybe Term
 findTransitivityMiddle rel x z available =
     let fromX = [t2 | Atom r [t1, t2] <- available, r == rel, t1 == x]
@@ -228,13 +270,22 @@ findTransitivityMiddle rel x z available =
         (mid:_) -> Just mid
         []      -> Nothing
 
+-- | Scan relapp-encoded atoms for a middle term y s.t. relapp(R,x,y) and relapp(R,y,z).
+findTransitivityMiddle_relapp :: Term -> Term -> Term -> [Formula] -> Maybe Term
+findTransitivityMiddle_relapp rel x z available =
+    let fromX = [t2 | Atom "relapp" [r, t1, t2] <- available, r == rel, t1 == x]
+        toZ   = [t1 | Atom "relapp" [r, t1, t2] <- available, r == rel, t2 == z]
+    in listToMaybe (filter (`elem` toZ) fromX)
+
 getRequiredPremises :: Maybe InferencePattern -> [Formula]
 getRequiredPremises Nothing    = []
 getRequiredPremises (Just pat) = case pat of
-    TransitivityPattern rel x y z -> [Atom rel [x, y], Atom rel [y, z]]
-    SymmetryPattern rel x z       -> [Atom rel [z, x]]
-    ReflexivityPattern _          -> []
-    ModusPonensPattern impl prem  -> [impl, prem]
+    TransitivityPattern rel x y z       -> [Atom rel [x, y], Atom rel [y, z]]
+    SymmetryPattern rel x z             -> [Atom rel [z, x]]
+    RelappTransitivityPattern rel x y z -> [Atom "relapp" [rel, x, y], Atom "relapp" [rel, y, z]]
+    RelappSymmetryPattern rel x z       -> [Atom "relapp" [rel, z, x]]
+    ReflexivityPattern _                -> []
+    ModusPonensPattern impl prem        -> [impl, prem]
     ConjunctionPattern conj       -> [conj]
     _                             -> []
 

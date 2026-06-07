@@ -131,10 +131,12 @@ data MissingPremise = MissingPremise
   , premiseRole :: String    -- e.g., "first argument", "second argument"
   } deriving (Eq, Show, Generic)
 
-data InferencePattern = TransitivityPattern String Term Term Term  -- rel x mid z
-                      | SymmetryPattern String Term Term           -- rel x z (need R(z,x))
-                      | ModusPonensPattern Formula Formula         -- Impl P Q, P
-                      | ConjunctionPattern Formula                 -- the And formula containing the target
+data InferencePattern = TransitivityPattern String Term Term Term     -- rel x mid z (2-arg atom)
+                      | SymmetryPattern String Term Term              -- rel x z (2-arg atom)
+                      | RelappTransitivityPattern Term Term Term Term -- relTerm x mid z (relapp-encoded)
+                      | RelappSymmetryPattern Term Term Term          -- relTerm x z (relapp-encoded)
+                      | ModusPonensPattern Formula Formula            -- Impl P Q, P
+                      | ConjunctionPattern Formula                    -- the And formula containing the target
                       | UniversalIntroPattern String Formula
                       | ExistentialIntroPattern String Formula
                       | ReflexivityPattern Term
