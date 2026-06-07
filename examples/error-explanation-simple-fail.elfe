@@ -1,0 +1,12 @@
+Include relations.
+
+Let R be relation.
+
+Lemma: for all x, y. R[x,y] implies not R[x,y].
+Proof:
+    Fix x.
+    Fix y.
+    Assume R[x,y].
+    Then not R[x,y] by contradiction.
+    Hence not R[x,y].
+qed.

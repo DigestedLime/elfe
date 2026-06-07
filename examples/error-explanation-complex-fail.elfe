@@ -1,0 +1,21 @@
+Include relations.
+
+Let R, S be relation.
+
+Lemma: for all x, y. R[x,y] and S is symmetric implies S[y,x].
+Proof:
+    Fix x.
+    Fix y.
+    Assume R[x,y] and S is symmetric.
+    Then S[y,x] by symmetry.
+    Hence S[y,x].
+qed.
+
+Lemma: for all x, y. R[x,y] implies S[x,y].
+Proof:
+    Fix x.
+    Fix y.
+    Assume R[x,y].
+    Then S[x,y] by transitivity.
+    Hence S[x,y].
+qed.
