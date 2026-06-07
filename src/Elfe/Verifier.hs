@@ -321,15 +321,17 @@ generateTimeoutExplanation stepId target context analysis =
     let ruleStr = case intendedRule analysis of
                       Just r  -> r
                       Nothing -> "unknown"
+        missing = missingFormulas analysis
+        errType = if null missing then ATPTimeoutError else MissingPremiseError missing
     in ErrorExplanation
         { failedStep        = stepId
         , attemptedRule     = ruleStr
         , targetFormula     = target
         , requiredPremises  = requiredFormulas analysis
         , availablePremises = availableFormulas analysis
-        , missingPremises   = missingFormulas analysis
+        , missingPremises   = missing
         , contextInfo       = context
-        , errorType         = ATPTimeoutError
+        , errorType         = errType
         }
 
 -- ---------------------------------------------------------------------------
