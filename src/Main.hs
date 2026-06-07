@@ -57,14 +57,20 @@ printRes ss = do
 collectExplainedFailures :: [StatementStatus] -> [StatementStatus]
 collectExplainedFailures [] = []
 collectExplainedFailures (s@(StatementStatus _ _ (IncorrectWithExplanation _ _) cs _ _):rest) =
-    s : collectExplainedFailures cs ++ collectExplainedFailures rest
+    let childFailures = collectExplainedFailures cs
+    in if null childFailures
+       then s : collectExplainedFailures rest
+       else childFailures ++ collectExplainedFailures rest
 collectExplainedFailures (StatementStatus _ _ _ cs _ _:rest) =
     collectExplainedFailures cs ++ collectExplainedFailures rest
 
 collectPlainFailures :: [StatementStatus] -> [StatementStatus]
 collectPlainFailures [] = []
 collectPlainFailures (s@(StatementStatus _ _ (Incorrect _) cs _ _):rest) =
-    s : collectPlainFailures cs ++ collectPlainFailures rest
+    let childFailures = collectPlainFailures cs
+    in if null childFailures
+       then s : collectPlainFailures rest
+       else childFailures ++ collectPlainFailures rest
 collectPlainFailures (StatementStatus _ _ _ cs _ _:rest) =
     collectPlainFailures cs ++ collectPlainFailures rest
 
