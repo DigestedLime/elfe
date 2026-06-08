@@ -307,7 +307,7 @@ unfold (Forall v f) bvs =
      reserved "."
      --traceM ("unfold forall to " ++ show f)
      lId <- newId
-     derivation <- derive (replaceVar f v var) (var:bvs)
+     derivation <- derive (replaceVar f v (boundPrefix ++ var)) (var:bvs)
      return derivation
 
 unfold (Exists v f) bvs = 
