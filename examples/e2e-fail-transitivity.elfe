@@ -1,0 +1,11 @@
+Notation relapp: R[x,y].
+
+Let R be relation.
+
+Definition transitivity: R is transitive iff for all x,y,z. R[x,y] and R[y,z] implies R[x,z].
+
+Lemma: R[x,z].
+Proof:
+    Fix x, z.
+    Then R[x,z] by transitivity.
+qed.

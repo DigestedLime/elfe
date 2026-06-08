@@ -1,0 +1,10 @@
+Include relations.
+
+Let R be relation.
+
+Lemma: R is transitive and R is symmetric and R[x,y] implies R[y,y].
+Proof:
+    Assume R is transitive and R is symmetric and R[x,y].
+    Then R[y,x] by symmetry.
+    Then R[y,y] by transitivity.
+qed.

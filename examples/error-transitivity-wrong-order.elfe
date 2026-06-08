@@ -1,0 +1,9 @@
+Include relations.
+
+Let R be relation.
+
+Lemma: R is transitive and R[x,y] and R[z,y] implies R[x,z].
+Proof:
+    Assume R is transitive and R[x,y] and R[z,y].
+    Then R[x,z] by transitivity.
+qed.

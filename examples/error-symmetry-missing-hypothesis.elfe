@@ -1,0 +1,9 @@
+Include relations.
+
+Let R be relation.
+
+Lemma: R is symmetric implies R[x,y].
+Proof:
+    Assume R is symmetric.
+    Then R[x,y] by symmetry.
+qed.

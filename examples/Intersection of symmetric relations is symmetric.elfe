@@ -1,0 +1,14 @@
+Include relations.
+
+Let R, S be relation.
+
+Lemma: R is symmetric and S is symmetric implies (R ∩ S) is symmetric.
+Proof:
+    Assume R is symmetric and S is symmetric.
+    Assume (R ∩ S)[x,y].
+    Then R[x,y] and S[x,y].
+    Then R[y,x] by symmetry.
+    Then S[y,x] by symmetry.
+    Then (R ∩ S)[y,x].
+    Hence (R ∩ S) is symmetric.
+qed.

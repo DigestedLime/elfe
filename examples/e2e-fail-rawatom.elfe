@@ -1,0 +1,7 @@
+Axiom hyp: Q(a,b).
+Axiom transitivity: for all x,y,z. Q(x,y) and Q(y,z) implies Q(x,z).
+
+Lemma: Q(a,c).
+Proof:
+    Then Q(a,c) by transitivity.
+qed.
